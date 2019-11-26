@@ -28,8 +28,8 @@ from great_expectations.core import expectationSuiteValidationResultSchema, expe
 from .datasource import (
     add_datasource as add_datasource_impl,
     profile_datasource,
+    create_sample_expectation_suite,
     build_docs as build_documentation_impl,
-    MSG_GO_TO_NOTEBOOK,
 )
 from great_expectations.cli.util import cli_message, is_sane_slack_webhook
 from great_expectations.data_context import DataContext
@@ -56,21 +56,8 @@ except ImportError:
 # Take over the entire GE module logging namespace when running CLI
 logger = logging.getLogger("great_expectations")
 
-# class NaturalOrderGroup(click.Group):
-#     def __init__(self, name=None, commands=None, **attrs):
-#         if commands is None:
-#             commands = OrderedDict()
-#         elif not isinstance(commands, OrderedDict):
-#             commands = OrderedDict(commands)
-#         click.Group.__init__(self, name=name,
-#                              commands=commands,
-#                              **attrs)
-#
-#     def list_commands(self, ctx):
-#         return self.commands.keys()
 
 # TODO: consider using a specified-order supporting class for help (but wasn't working with python 2)
-# @click.group(cls=NaturalOrderGroup)
 @click.group()
 @click.version_option(version=ge_version)
 @click.option('--verbose', '-v', is_flag=True, default=False,
@@ -78,6 +65,9 @@ logger = logging.getLogger("great_expectations")
 def cli(verbose):
     """great_expectations command-line interface"""
     if verbose:
+        # Note we are explicitly not using a logger in all CLI output to have
+        # more control over console UI.
+        _set_up_logger()
         logger.setLevel(logging.DEBUG)
 
 
@@ -146,8 +136,10 @@ validate the data.
         elif expectation_suite.data_asset_type == "FileDataAsset":
             dataset_class = FileDataAsset
         else:
-            logger.critical("Unrecognized data_asset_type %s. You may need to specify custom_dataset_module and \
-                custom_dataset_class." % expectation_suite.data_asset_type)
+            cli_message(
+                "Unrecognized data_asset_type %s. You may need to specify "
+                "custom_dataset_module and custom_dataset_class." % expectation_suite.data_asset_type
+            )
             return -1
     else:
         dataset_class = PandasDataset
@@ -226,9 +218,12 @@ def init(target_directory, view):
         if not data_source_name:  # no datasource was created
             return
 
-        context = _slack_setup(context)
-
-        profile_datasource(context, data_source_name, open_docs=view, additional_batch_kwargs={"limit": 1000})
+        create_sample_expectation_suite(
+            context,
+            data_source_name,
+            additional_batch_kwargs={"limit": 1000},
+            open_docs=view,
+        )
         cli_message("""\n<cyan>Great Expectations is now set up in your project!</cyan>""")
 
 def _slack_setup(context):
@@ -263,7 +258,7 @@ def _create_new_project(target_directory):
         data_source_name, data_source_type = add_datasource_impl(context)
         return context, data_source_name, data_source_type
     except ge_exceptions.DataContextError as err:
-        logger.critical(err.message)
+        cli_message("<red>{}</red>".format(err.message))
         sys.exit(-1)
 
 
@@ -303,6 +298,7 @@ def add_datasource(directory, view):
     if not data_source_name:  # no datasource was created
         return
 
+    # TODO do we really want to "profile" every new datasource?
     profile_datasource(context, data_source_name, open_docs=view)
 
 
@@ -424,8 +420,6 @@ def profile(datasource_name, data_assets, profile_all_data_assets, directory, vi
 )
 def build_docs(directory, site_name, view=True):
     """Build Data Docs for a project."""
-    logger.debug("Starting cli.build_docs")
-
     try:
         context = DataContext(directory)
         build_documentation_impl(
@@ -513,15 +507,15 @@ def do_config_check(target_directory):
         return False, err.message
 
 
-def main():
+def _set_up_logger():
     handler = logging.StreamHandler()
-    # Just levelname and message Could re-add other info if we want
-    formatter = logging.Formatter(
-        '%(message)s')
-    # '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+    formatter = logging.Formatter('%(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
+
+
+def main():
     cli()
 
 

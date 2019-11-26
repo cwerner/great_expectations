@@ -40,6 +40,7 @@ from great_expectations.datasource import (
     DBTDatasource
 )
 from great_expectations.profile.basic_dataset_profiler import BasicDatasetProfiler
+from great_expectations.profile.basic_dataset_profiler import SampleExpectationsDatasetProfiler
 
 from .types import (
     DataAssetIdentifier,
@@ -206,10 +207,13 @@ class ConfigOnlyDataContext(object):
         uncommitted_dir = os.path.join(base_dir, "uncommitted")
 
         for new_directory in cls.UNCOMMITTED_DIRECTORIES:
+            new_directory_path = os.path.join(uncommitted_dir, new_directory)
             safe_mmkdir(
-                os.path.join(uncommitted_dir, new_directory),
+                new_directory_path,
                 exist_ok=True
             )
+            if new_directory == "data_docs":
+                cls.scaffold_data_docs_static_assets_directory(new_directory_path)
 
         notebook_path = os.path.join(base_dir, "notebooks")
         for subdir in cls.NOTEBOOK_SUBDIRECTORIES:
@@ -218,9 +222,16 @@ class ConfigOnlyDataContext(object):
     @classmethod
     def scaffold_custom_data_docs(cls, plugins_dir):
         """Copy custom data docs templates"""
-        styles_template = file_relative_path(__file__, "../render/view/styles/data_docs_custom_styles_template.css")
+        styles_template = file_relative_path(__file__, "../render/view/static/styles/data_docs_custom_styles_template.css")
         styles_destination_path = os.path.join(plugins_dir, "custom_data_docs", "styles", "data_docs_custom_styles.css")
         shutil.copyfile(styles_template, styles_destination_path)
+        
+    @classmethod
+    def scaffold_data_docs_static_assets_directory(cls, data_docs_dir):
+        """Copy static assets directory"""
+        static_assets_dir = file_relative_path(__file__, "../render/view/static")
+        static_assets_destination_path = os.path.join(data_docs_dir, "static")
+        shutil.copytree(static_assets_dir, static_assets_destination_path)
 
     @classmethod
     def scaffold_notebooks(cls, base_dir):
@@ -1546,8 +1557,9 @@ class ConfigOnlyDataContext(object):
                            data_assets=None,
                            max_data_assets=20,
                            profile_all_data_assets=True,
-                           profiler=BasicDatasetProfiler,
+                           profiler=SampleExpectationsDatasetProfiler,
                            dry_run=False,
+                           run_id="profiling",
                            additional_batch_kwargs=None):
         """Profile the named datasource using the named profiler.
 
@@ -1585,7 +1597,7 @@ class ConfigOnlyDataContext(object):
         if generator_name not in data_asset_names[datasource_name]:
             raise ge_exceptions.ProfilerError("Generator %s not found for datasource %s" % (generator_name, datasource_name))
 
-        data_asset_name_list = list(data_asset_names[datasource_name][generator_name])
+        data_asset_name_list = [name[0] for name in data_asset_names[datasource_name][generator_name]["names"]]
         total_data_assets = len(data_asset_name_list)
 
         if data_assets and len(data_assets) > 0:
@@ -1625,7 +1637,7 @@ class ConfigOnlyDataContext(object):
         if not dry_run:
             logger.info("Profiling all %d data assets from generator %s" % (len(data_asset_name_list), generator_name))
         else:
-            logger.debug("Found %d data assets from generator %s" % (len(data_asset_name_list), generator_name))
+            logger.info("Found %d data assets from generator %s" % (len(data_asset_name_list), generator_name))
 
         profiling_results['success'] = True
 
@@ -1633,8 +1645,6 @@ class ConfigOnlyDataContext(object):
             profiling_results['results'] = []
             total_columns, total_expectations, total_rows, skipped_data_assets = 0, 0, 0, 0
             total_start_time = datetime.datetime.now()
-            # run_id = total_start_time.isoformat().replace(":", "") + "Z"
-            run_id = "profiling"
 
             for name in data_asset_name_list:
                 logger.info("\tProfiling '%s'..." % name)

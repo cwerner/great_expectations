@@ -83,7 +83,7 @@ class DefaultJinjaView(object):
         )
         styles_loader = PackageLoader(
             'great_expectations',
-            'render/view/styles'
+            'render/view/static/styles'
         )
 
         loaders = [
@@ -103,6 +103,12 @@ class DefaultJinjaView(object):
         env.filters['render_styling'] = self.render_styling
         env.filters['render_content_block'] = self.render_content_block
         env.globals['ge_version'] = ge_version
+        env.globals['static_assets_dir'] = os.path.join(
+            self.data_context.root_directory,
+            "uncommitted",
+            "data_docs",
+            "static"
+        )
 
         template = env.get_template(template)
         template.globals['now'] = datetime.datetime.utcnow
