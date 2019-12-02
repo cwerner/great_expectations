@@ -1,5 +1,4 @@
 import nbformat
-
 from great_expectations.render.renderer.renderer import Renderer
 
 
@@ -140,7 +139,8 @@ batch = context.get_batch(\""""
         :type suite: dict
         """
         self.suite_name = suite["expectation_suite_name"]
-        self.data_asset_name = suite["data_asset_name"]
+        # TODO this is not correct
+        self.data_asset_name = str(suite["data_asset_name"])
         notebook = self._create_new_notebook()
         notebook["cells"] = notebook[
             "cells"
